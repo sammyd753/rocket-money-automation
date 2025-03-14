@@ -37,12 +37,6 @@ automation.log
 
 # Screenshots
 *.png
-2fa_page.png
-error_screenshot.png
-login_error.png
-after_2fa_error.png
-2fa_error.png
-download_error_*.png
 screenshots/
 
 # Local files
@@ -50,11 +44,13 @@ rocket_money_data.csv
 email_content.html
 download_page.html
 download_response.txt
+process.txt
 
 # Credentials and sensitive data
 credentials.json
 config.py
 .env
+cookies/
 
 # Additional directories
 chatgptway/ 

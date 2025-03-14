@@ -5,9 +5,11 @@ import imaplib
 import email
 import gspread
 import requests
-import undetected_chromedriver as uc
-from config import *
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+import pickle
+from config import *
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
@@ -57,268 +59,221 @@ def wait_and_click(driver, wait, xpath, fallback_xpath, error_msg, retries=3):
             time.sleep(2)
     return False
 
+def save_rocket_money_cookies():
+    """Save cookies from a logged-in Rocket Money session"""
+    log("Starting cookie save process...")
+    
+    options = Options()
+    options.add_argument('--start-maximized')
+    options.add_argument('--user-data-dir=C:\\Users\\Samuel\\AppData\\Local\\Google\\Chrome\\User Data')
+    options.add_argument('--profile-directory=Default')
+    options.add_experimental_option('excludeSwitches', ['enable-automation'])
+    options.add_experimental_option('useAutomationExtension', False)
+    
+    service = Service()
+    service.creation_flags = 0x08000000  # No console window
+    
+    driver = None
+    try:
+        log("Opening browser with your Chrome profile...")
+        driver = webdriver.Chrome(service=service, options=options)
+        
+        # Go to Rocket Money
+        driver.get("https://app.rocketmoney.com")
+        time.sleep(5)  # Give the page time to load
+        
+        # Ask user to confirm they see the logged-in state
+        input("Press Enter once you confirm you're logged into Rocket Money...")
+        
+        # Create cookies directory if it doesn't exist
+        if not os.path.exists('cookies'):
+            os.makedirs('cookies')
+        
+        # Save cookies
+        with open(os.path.join('cookies', 'rocket_money_cookies.pkl'), 'wb') as f:
+            pickle.dump(driver.get_cookies(), f)
+        log("Successfully saved cookies")
+            
+    finally:
+        if driver:
+            driver.quit()
+
+def load_rocket_money_cookies(driver):
+    """Load saved Rocket Money cookies into the driver"""
+    cookie_file = os.path.join('cookies', 'rocket_money_cookies.pkl')
+    if os.path.exists(cookie_file):
+        # First make sure we're on the correct domain
+        current_url = driver.current_url
+        if not current_url.startswith('https://app.rocketmoney.com'):
+            driver.get('https://app.rocketmoney.com')
+            time.sleep(2)
+        
+        # Load cookies
+        with open(cookie_file, 'rb') as f:
+            cookies = pickle.load(f)
+        
+        # Add each cookie to the driver
+        for cookie in cookies:
+            try:
+                # Ensure cookie has correct domain
+                if 'domain' in cookie and not cookie['domain'].endswith('rocketmoney.com'):
+                    cookie['domain'] = '.rocketmoney.com'
+                driver.add_cookie(cookie)
+            except Exception as e:
+                log(f"Error adding cookie: {str(e)}", "error")
+        return True
+    return False
+
 def export_rocket_money_data():
     log("Starting Rocket Money export...")
     
-    # Configure undetected-chromedriver
-    options = uc.ChromeOptions()
+    # Configure Chrome
+    options = Options()
     options.add_argument('--start-maximized')
+    options.add_argument('--user-data-dir=C:\\Users\\Samuel\\AppData\\Local\\Google\\Chrome\\User Data')
+    options.add_argument('--profile-directory=Default')
     
     driver = None
     try:
         log("Initializing Chrome driver...")
-        driver = uc.Chrome(options=options)
+        driver = webdriver.Chrome(options=options)
         wait = WebDriverWait(driver, 20)
         
-        # Login to Rocket Money
-        log("Navigating to Rocket Money app...")
-        driver.get("https://app.rocketmoney.com")
-        time.sleep(5)  # Wait for initial page load and redirect
-        
-        # Log the current URL to verify we're on the right page
-        current_url = driver.current_url
-        log(f"Current URL: {current_url}")
-        
-        log("Waiting for login form...")
-        try:
-            # Try multiple selectors for the login form
-            selectors = [
-                "input[name='username']",
-                "input[type='text']",
-                "input[placeholder*='username' i]",
-                "input[placeholder*='Username' i]",
-                "input[placeholder*='email' i]",
-                "input[placeholder*='Email' i]"
-            ]
-            
-            username_field = None
-            for selector in selectors:
-                try:
-                    log(f"Trying selector: {selector}")
-                    username_field = wait.until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                    )
-                    if username_field:
-                        log(f"Found username field with selector: {selector}")
-                        break
-                except:
-                    continue
-            
-            if not username_field:
-                raise Exception("Could not find username field with any selector")
-            
-            # Take a screenshot before entering credentials
-            driver.save_screenshot("before_login.png")
-            log("Screenshot saved as before_login.png")
-            
-            # Clear fields first
-            username_field.clear()
-            time.sleep(1)
-            
-            # Type credentials with small delays
-            for char in ROCKET_USER:
-                username_field.send_keys(char)
-                time.sleep(0.1)
-            time.sleep(1)
-            
-            # Try to find password field
-            password_selectors = [
-                "input[name='password']",
-                "input[type='password']",
-                "input[placeholder*='password' i]",
-                "input[placeholder*='Password' i]"
-            ]
-            
-            password_field = None
-            for selector in password_selectors:
-                try:
-                    log(f"Trying password selector: {selector}")
-                    password_field = wait.until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                    )
-                    if password_field:
-                        log(f"Found password field with selector: {selector}")
-                        break
-                except:
-                    continue
-            
-            if not password_field:
-                raise Exception("Could not find password field with any selector")
-            
-            password_field.clear()
-            time.sleep(1)
-            
-            for char in ROCKET_PASS:
-                password_field.send_keys(char)
-                time.sleep(0.1)
-            time.sleep(1)
-            
-            # Try to find login button
-            button_selectors = [
-                "button[type='submit']",
-                "button:contains('Sign in')",
-                "button:contains('Log in')",
-                "input[type='submit']"
-            ]
-            
-            login_button = None
-            for selector in button_selectors:
-                try:
-                    log(f"Trying button selector: {selector}")
-                    login_button = wait.until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-                    )
-                    if login_button:
-                        log(f"Found login button with selector: {selector}")
-                        break
-                except:
-                    continue
-            
-            if not login_button:
-                raise Exception("Could not find login button with any selector")
-            
-            login_button.click()
-            
-        except Exception as e:
-            log(f"Error during login form interaction: {str(e)}", "error")
-            # Take screenshot on error
-            driver.save_screenshot("login_error.png")
-            log("Error screenshot saved as login_error.png")
-            raise
-        
-        # Handle 2-factor authentication
-        log("Waiting for 2-factor authentication...")
-        try:
-            # Wait for the 2FA input field
-            twofa_field = wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='text']"))
-            )
-            log("Found 2FA input field")
-            
-            # Clear the field first
-            twofa_field.clear()
-            time.sleep(1)
-            
-            # Get 2FA code from user
-            twofa_code = input("Please enter the 2FA code sent to your device: ")
-            
-            # Type the code with small delays
-            for char in twofa_code:
-                twofa_field.send_keys(char)
-                time.sleep(0.1)
-            time.sleep(1)
-            
-            # Find and click the verify button
-            verify_button = wait.until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit']"))
-            )
-            verify_button.click()
-            log("2FA code submitted")
-            
-            # Wait for 2FA verification
+        # Try to load saved cookies
+        if load_rocket_money_cookies(driver):
+            log("Loaded saved cookies, refreshing page...")
+            driver.refresh()
             time.sleep(5)
             
-        except Exception as e:
-            log(f"Error during 2FA: {str(e)}", "error")
-            driver.save_screenshot("2fa_error.png")
-            log("2FA error screenshot saved as 2fa_error.png")
-            raise
-        
-        # Wait for login and navigate to transactions
-        log("Waiting for login to complete...")
-        time.sleep(10)  # Increased wait time for login
-        
-        log("Navigating to transactions page...")
-        driver.get("https://app.rocketmoney.com/transactions")
-        time.sleep(8)  # Increased wait time for page load
-        
-        # 1. Click All dates button
-        log("Clicking All dates button...")
-        wait_and_click(
-            driver, 
-            wait, 
-            "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[1]/div/button",
-            "//button[contains(text(), 'All dates')]",
-            "Failed to click All dates button"
-        )
-        
-        time.sleep(2)  # Wait for dropdown
-        
-        # 2. Select Last 7 days
-        log("Selecting Last 7 days...")
-        wait_and_click(
-            driver,
-            wait,
-            "/html/body/div[3]/main/div/div/div[3]/div/div/div/div/li[2]",
-            "//li[contains(text(), 'Last 7 days')]",
-            "Failed to select Last 7 days"
-        )
-        
-        time.sleep(3)  # Wait for filter to apply
-        
-        # 3. Click All Categories button
-        log("Clicking All Categories button...")
-        wait_and_click(
-            driver,
-            wait,
-            "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[2]/div/button",
-            "//button[contains(text(), 'All Categories')]",
-            "Failed to click All Categories button"
-        )
-        
-        time.sleep(2)  # Wait for dropdown
-        
-        # 4. Select Piano Income category
-        log("Selecting Piano Income category...")
-        wait_and_click(
-            driver,
-            wait,
-            "/html/body/div[3]/main/div/div/div[4]/div/div/div/ul/li[3]",
-            "//li[contains(text(), 'Piano Income')]",
-            "Failed to select Piano Income category"
-        )
-        
-        time.sleep(3)  # Wait for filter to apply
-        
-        # 5. Click Export button
-        log("Clicking Export button...")
-        wait_and_click(
-            driver,
-            wait,
-            "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[1]/div[2]/div[1]/div/button",
-            "//button[text()='Export']",
-            "Failed to click Export button"
-        )
-        
-        # Wait for and click the export confirmation button
-        log("Waiting for export confirmation button...")
-        try:
-            # Try exact xpath first, then fallback to text pattern
+            # Verify we're logged in by trying multiple selectors
+            log("Attempting to verify login status...")
             try:
-                confirm_button = wait.until(
-                    EC.element_to_be_clickable((By.XPATH, "/html/body/div[7]/div/div/div/div[2]/button"))
+                selectors = [
+                    "nav",
+                    "[data-testid='nav']",
+                    ".navigation",
+                    "#root > div"
+                ]
+                
+                for selector in selectors:
+                    try:
+                        log(f"Trying to find element with selector: {selector}")
+                        element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                        log(f"Found element with selector: {selector}")
+                        break
+                    except:
+                        log(f"Selector not found: {selector}")
+                        continue
+                else:
+                    log("Could not verify login with any selector", "error")
+                    driver.save_screenshot("login_verification_failed.png")
+                    raise Exception("Could not verify login status")
+                
+                log("Successfully verified login status")
+                
+                # Navigate to transactions
+                log("Navigating to transactions page...")
+                driver.get("https://app.rocketmoney.com/transactions")
+                time.sleep(8)
+                
+                # Take a screenshot to verify the page loaded correctly
+                driver.save_screenshot("transactions_page.png")
+                log("Saved screenshot of transactions page")
+                
+                # Continue with export process...
+                # 1. Click All dates button
+                log("Clicking All dates button...")
+                wait_and_click(
+                    driver, 
+                    wait, 
+                    "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[1]/div/button",
+                    "//button[contains(text(), 'All dates')]",
+                    "Failed to click All dates button"
                 )
-            except:
-                confirm_button = wait.until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Export') and contains(text(), 'transactions')]"))
+                
+                time.sleep(2)  # Wait for dropdown
+                
+                # 2. Select Last 7 days
+                log("Selecting Last 7 days...")
+                wait_and_click(
+                    driver,
+                    wait,
+                    "/html/body/div[3]/main/div/div/div[3]/div/div/div/div/li[2]",
+                    "//li[contains(text(), 'Last 7 days')]",
+                    "Failed to select Last 7 days"
                 )
+                
+                time.sleep(3)  # Wait for filter to apply
+                
+                # 3. Click All Categories button
+                log("Clicking All Categories button...")
+                wait_and_click(
+                    driver,
+                    wait,
+                    "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[2]/div/button",
+                    "//button[contains(text(), 'All Categories')]",
+                    "Failed to click All Categories button"
+                )
+                
+                time.sleep(2)  # Wait for dropdown
+                
+                # 4. Select Piano Income category
+                log("Selecting Piano Income category...")
+                wait_and_click(
+                    driver,
+                    wait,
+                    "/html/body/div[3]/main/div/div/div[4]/div/div/div/ul/li[3]",
+                    "//li[contains(text(), 'Piano Income')]",
+                    "Failed to select Piano Income category"
+                )
+                
+                time.sleep(3)  # Wait for filter to apply
+                
+                # 5. Click Export button
+                log("Clicking Export button...")
+                wait_and_click(
+                    driver,
+                    wait,
+                    "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[1]/div[2]/div[1]/div/button",
+                    "//button[text()='Export']",
+                    "Failed to click Export button"
+                )
+                
+                # Wait for and click the export confirmation button
+                log("Waiting for export confirmation button...")
+                try:
+                    # Try exact xpath first, then fallback to text pattern
+                    try:
+                        confirm_button = wait.until(
+                            EC.element_to_be_clickable((By.XPATH, "/html/body/div[7]/div/div/div/div[2]/button"))
+                        )
+                    except:
+                        confirm_button = wait.until(
+                            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Export') and contains(text(), 'transactions')]"))
+                        )
+                    
+                    time.sleep(1)  # Short wait to ensure modal is fully loaded
+                    log("Clicking export confirmation button...")
+                    confirm_button.click()
+                    log("Export confirmation clicked")
+                except Exception as e:
+                    log(f"Error clicking export confirmation: {str(e)}", "error")
+                    driver.save_screenshot("export_confirm_error.png")
+                    raise
+                
+                log("Export request submitted for Piano Income transactions from last 7 days.")
+                time.sleep(3)  # Wait for export to initiate
+                
+            except Exception as e:
+                log(f"Error verifying login with cookies: {str(e)}", "error")
+                raise
+        else:
+            log("No saved cookies found or cookies failed, please run save_rocket_money_cookies() first")
+            raise Exception("No valid cookies found")
             
-            time.sleep(1)  # Short wait to ensure modal is fully loaded
-            log("Clicking export confirmation button...")
-            confirm_button.click()
-            log("Export confirmation clicked")
-        except Exception as e:
-            log(f"Error clicking export confirmation: {str(e)}", "error")
-            driver.save_screenshot("export_confirm_error.png")
-            raise
-        
-        log("Export request submitted for Piano Income transactions from last 7 days.")
-        time.sleep(3)  # Wait for export to initiate
-        
     except Exception as e:
         log(f"Error during Rocket Money export: {str(e)}", "error")
         if driver:
-            # Take screenshot on error
             try:
                 screenshot_path = "error_screenshot.png"
                 driver.save_screenshot(screenshot_path)
@@ -443,11 +398,14 @@ def download_and_save_to_drive(download_link, max_retries=3):
             log(f"Download attempt {attempt + 1}/{max_retries}")
             
             # Configure undetected-chromedriver
-            options = uc.ChromeOptions()
+            options = Options()
             options.add_argument('--start-maximized')
+            # Use default Chrome profile instead of incognito
+            options.add_argument('--user-data-dir=C:\\Users\\Samuel\\AppData\\Local\\Google\\Chrome\\User Data')
+            options.add_argument('--profile-directory=Default')
             
             log("Initializing Chrome driver for download...")
-            driver = uc.Chrome(options=options)
+            driver = webdriver.Chrome(options=options)
             wait = WebDriverWait(driver, 20)
             
             # First get the download page
@@ -803,14 +761,20 @@ def main():
     local_file = None
     latest_file = None
     try:
+        # Check if we have cookies
+        if not os.path.exists(os.path.join('cookies', 'rocket_money_cookies.pkl')):
+            log("No cookies found. Please run save_rocket_money_cookies() first")
+            save_rocket_money_cookies()
+            return
+        
         # 1. Export Rocket Money Data with piano income filter
-        # export_rocket_money_data()
-        # time.sleep(30)  # Initial wait for email
+        export_rocket_money_data()
+        time.sleep(30)  # Initial wait for email
         
         # 2. Get Download Link from Email (with retries)
-        # download_link = get_download_link()
-        # if not download_link:
-        #     raise Exception("Failed to get download link after all retries")
+        download_link = get_download_link()
+        if not download_link:
+            raise Exception("Failed to get download link after all retries")
         
         # 3. Process downloaded file and save to Google Drive
         downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
