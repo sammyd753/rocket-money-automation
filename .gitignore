@@ -51,6 +51,8 @@ credentials.json
 config.py
 .env
 cookies/
+cleanup.py
 
 # Additional directories
 chatgptway/ 
+chrome_automation_profile/
