@@ -20,6 +20,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from bs4 import BeautifulSoup
 import glob
+import csv
 
 # Configure logging
 logging.basicConfig(
@@ -38,13 +39,13 @@ def wait_and_click(driver, wait, xpath, fallback_xpath, error_msg, retries=3):
     """Helper function to wait for and click elements with retry logic and fallback xpath"""
     for attempt in range(retries):
         try:
-            # Try primary xpath first
             try:
+                # If primary xpath fails, try fallback
                 element = wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
                 element.click()
                 return True
             except:
-                # If primary xpath fails, try fallback
+                # Try primary xpath first
                 log(f"Primary xpath failed, trying fallback for: {error_msg}")
                 element = wait.until(EC.element_to_be_clickable((By.XPATH, fallback_xpath)))
                 element.click()
@@ -87,10 +88,9 @@ def handle_login_form(driver, wait):
         username_field.clear()
         time.sleep(0.5)
         
-        # Type credentials with small delays
+        # Type credentials
         for char in ROCKET_USER:
             username_field.send_keys(char)
-            time.sleep(0.1)
         time.sleep(0.5)
         
         # Try to find password field
@@ -119,7 +119,6 @@ def handle_login_form(driver, wait):
         
         for char in ROCKET_PASS:
             password_field.send_keys(char)
-            time.sleep(0.1)
         time.sleep(0.5)
         
         # Try to find login button
@@ -214,14 +213,15 @@ def navigate_and_export_transactions(driver, wait):
             
             time.sleep(0.5)  # Wait for dropdown
             
-            # 2. Select Last 7 days
-            log("Selecting Last 7 days...")
+            # 2. Select date range based on config
+            date_range_index, date_range_text = ROCKET_DATE_RANGE_MAP[ROCKET_DATE_SELECT]
+            log(f"Selecting {date_range_text}...")
             wait_and_click(
                 driver,
                 wait,
-                "/html/body/div[3]/main/div/div/div[3]/div/div/div/div/li[2]",
-                "//li[contains(text(), 'Last 7 days')]",
-                "Failed to select Last 7 days"
+                f"/html/body/div[3]/main/div/div/div[3]/div/div/div/div/li[{date_range_index}]",
+                f"//li[contains(text(), '{date_range_text}')]",
+                f"Failed to select {date_range_text}"
             )
             
             time.sleep(0.5)  # Wait for filter to apply
@@ -338,9 +338,10 @@ def export_rocket_money_data():
                 pass
         raise
     finally:
+        log(f"Quitting driver...")
         if driver:
             driver.quit()
-def get_download_link(max_retries=5, wait_time=30):
+def get_download_link(max_retries=1, wait_time=30):
     """Get download link with retry logic"""
     for attempt in range(max_retries):
         try:
@@ -663,7 +664,7 @@ def download_and_save_to_drive(download_link, max_retries=3):
     
     raise Exception("Failed to download file after all retries")
 def append_to_google_sheets(file_path, max_retries=3):
-    """Append data to Google Sheets with retry logic"""
+    """Append data to Google Sheets with duplicate prevention using composite key"""
     log("Appending data to Google Sheets...")
     
     for attempt in range(max_retries):
@@ -676,45 +677,88 @@ def append_to_google_sheets(file_path, max_retries=3):
             spreadsheet = client.open_by_key(SHEET_ID)
             worksheet = spreadsheet.worksheet(SHEET_NAME)
             
-            # Read CSV and skip header
-            with open(file_path, "r") as f:
-                header = f.readline().strip().split(",")  # Get header for column identification
-                rows = []
-                for line in f:
-                    row = line.strip().split(",")
-                    # Format each field based on its type
-                    formatted_row = []
-                    for i, (value, col_name) in enumerate(zip(row, header)):
-                        value = value.strip()  # Remove any whitespace
-                        if col_name in ["Date", "Original Date"]:
-                            # Format as plain text without any prefix
-                            formatted_row.append(value)
-                        elif col_name == "Amount":
-                            # Format as number
-                            try:
-                                formatted_row.append(float(value))
-                            except ValueError:
-                                log(f"Warning: Invalid amount value: {value}", "error")
-                                formatted_row.append(value)
-                        elif col_name == "Account Number":
-                            # Format account number as plain text
-                            formatted_row.append(str(value))
-                        else:
-                            formatted_row.append(value)
-                    rows.append(formatted_row)
+            # Get all existing values from the worksheet
+            log("Fetching existing data from Google Sheets...")
+            existing_data = worksheet.get_all_values()
+            if not existing_data:
+                log("Sheet is empty, initializing with header row")
+                # Read CSV header to initialize sheet
+                with open(file_path, "r", newline='') as f:
+                    csv_reader = csv.reader(f)
+                    header = next(csv_reader)  # Get header row
+                worksheet.append_row(header)
+                existing_data = [header]  # Update existing_data to include header
+                existing_keys = set()
+            else:
+                header = existing_data[0]
+                # Find indices for our composite key columns
+                try:
+                    date_idx = header.index("Date")
+                    amount_idx = header.index("Amount")
+                    desc_idx = header.index("Description")
+                except ValueError as e:
+                    log(f"Error finding required columns: {str(e)}", "error")
+                    raise
+                
+                # Create set of existing composite keys
+                existing_keys = {
+                    (row[date_idx], row[amount_idx], row[desc_idx])
+                    for row in existing_data[1:]  # Skip header row
+                }
+                log(f"Found {len(existing_keys)} existing transactions")
             
-            if not rows:
-                log("No data to append", "error")
+            # Read and process new CSV data
+            new_rows = []
+            duplicate_count = 0
+            with open(file_path, "r", newline='') as f:
+                csv_reader = csv.reader(f)
+                csv_header = next(csv_reader)  # Skip header row from CSV
+                
+                # Find indices in CSV data
+                csv_date_idx = csv_header.index("Date")
+                csv_amount_idx = csv_header.index("Amount")
+                csv_desc_idx = csv_header.index("Description")
+                
+                # Process each row
+                for row in csv_reader:
+                    # Create composite key for new row using original values
+                    new_key = (row[csv_date_idx], row[csv_amount_idx], row[csv_desc_idx])
+                    
+                    if new_key not in existing_keys:
+                        # Format row based on column types, preserving original strings
+                        formatted_row = []
+                        for i, (value, col_name) in enumerate(zip(row, csv_header)):
+                            if col_name == "Amount":
+                                try:
+                                    # Convert amount to float for proper numeric handling
+                                    formatted_row.append(float(value))
+                                except ValueError:
+                                    log(f"Warning: Invalid amount value: {value}", "error")
+                                    formatted_row.append(value)
+                            else:
+                                # Keep original string values for all other fields
+                                formatted_row.append(value)
+                        new_rows.append(formatted_row)
+                        existing_keys.add(new_key)  # Add to existing keys to prevent duplicates within new data
+                        log(f"New transaction found: Date={new_key[0]}, Amount={new_key[1]}, Description={new_key[2]}")
+                    else:
+                        duplicate_count += 1
+                        log(f"Skipping duplicate transaction: Date={new_key[0]}, Amount={new_key[1]}, Description={new_key[2]}")
+            
+            if not new_rows:
+                log(f"No new transactions to append. Found {duplicate_count} duplicate entries.")
                 return
             
             # Append in batches of 100 to avoid quota limits
             batch_size = 100
-            for i in range(0, len(rows), batch_size):
-                batch = rows[i:i + batch_size]
+            for i in range(0, len(new_rows), batch_size):
+                batch = new_rows[i:i + batch_size]
                 worksheet.append_rows(batch, value_input_option='USER_ENTERED')
                 log(f"Appended batch of {len(batch)} rows")
             
-            log(f"Successfully appended total of {len(rows)} rows to the worksheet.")
+            log(f"Successfully appended {len(new_rows)} new rows to the worksheet.")
+            if duplicate_count > 0:
+                log(f"Skipped {duplicate_count} duplicate entries.")
             return
             
         except Exception as e:
@@ -731,6 +775,7 @@ def main():
     try:
         # 1. Export Rocket Money Data with piano income filter
         export_rocket_money_data()
+        log("Waiting 30 seconds for email...")
         time.sleep(30)  # Initial wait for email
         
         # 2. Get Download Link from Email (with retries)
