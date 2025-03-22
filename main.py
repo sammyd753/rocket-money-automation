@@ -297,16 +297,27 @@ def verify_csv_file(file_path):
         if not first_line:
             raise ValueError("CSV file has no header row")
 
-def export_rocket_money_data():
-    log("Starting Rocket Money export...")
-    
-    # Configure undetected-chromedriver
+def get_chrome_options():
+    """Configure Chrome options with user data persistence"""
     options = uc.ChromeOptions()
     options.add_argument('--start-maximized')
+    
+    # Set up user data directory for session persistence
+    user_data_dir = os.path.join(os.getcwd(), 'chrome_user_data')
+    if not os.path.exists(user_data_dir):
+        os.makedirs(user_data_dir)
+    options.add_argument(f'--user-data-dir={user_data_dir}')
+    options.add_argument('--profile-directory=Default')
+    
+    return options
+
+def export_rocket_money_data():
+    log("Starting Rocket Money export...")
     
     driver = None
     try:
         log("Initializing Chrome driver...")
+        options = get_chrome_options()
         driver = uc.Chrome(options=options)
         wait = WebDriverWait(driver, 20)
         
@@ -319,9 +330,17 @@ def export_rocket_money_data():
         current_url = driver.current_url
         log(f"Current URL: {current_url}")
 
-        # Handle logging 
-        handle_login_form(driver, wait)
-        handle_2fa(driver, wait)
+        # Check if we need to log in
+        try:
+            # Quick check for login form
+            username_field = wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='username']"))
+            )
+            log("Login required, proceeding with authentication...")
+            handle_login_form(driver, wait)
+            handle_2fa(driver, wait)
+        except TimeoutException:
+            log("Already logged in, skipping authentication...")
 
         # Navigate to transactions page and export data
         navigate_and_export_transactions(driver, wait)
@@ -329,7 +348,6 @@ def export_rocket_money_data():
     except Exception as e:
         log(f"Error during Rocket Money export: {str(e)}", "error")
         if driver:
-            # Take screenshot on error
             try:
                 screenshot_path = "error_screenshot.png"
                 driver.save_screenshot(screenshot_path)
@@ -341,6 +359,7 @@ def export_rocket_money_data():
         log(f"Quitting driver...")
         if driver:
             driver.quit()
+
 def get_download_link(max_retries=1, wait_time=30):
     """Get download link with retry logic"""
     for attempt in range(max_retries):
@@ -445,9 +464,8 @@ def download_and_save_to_drive(download_link, max_retries=3):
             for f in before_files:
                 log(f"  - {f}")
             
-            # Configure undetected-chromedriver
-            options = uc.ChromeOptions()
-            options.add_argument('--start-maximized')
+            # Configure Chrome with session persistence
+            options = get_chrome_options()
             
             log("Initializing Chrome driver for download...")
             driver = uc.Chrome(options=options)
@@ -547,10 +565,8 @@ def download_and_save_to_drive(download_link, max_retries=3):
                         driver.save_screenshot("2fa_error.png")
                         raise
                     
-                except KeyboardInterrupt:
-                    if driver:
-                        driver.quit()
-                    continue
+                except TimeoutException:
+                    log("No 2FA required, continuing...")
                 except Exception as e:
                     log(f"Error during 2FA process: {str(e)}", "error")
                     if driver:
