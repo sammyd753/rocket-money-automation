@@ -156,7 +156,14 @@ def handle_login_form(driver, wait):
 def handle_2fa(driver, wait):
         """Handle 2-factor authentication flow."""
         log("Waiting for 2-factor authentication...")
+        
         try:
+            # Check if we are already logged in by verifying if we have reached the expected logged-in URL
+            logged_in_url = "https://app.rocketmoney.com/"  # Replace with your actual logged-in page URL
+            if driver.current_url.startswith(logged_in_url):
+                log("Already logged in. Skipping 2FA.")
+                return  # Exit gracefully
+            
             # Wait for the 2FA input field
             twofa_field = wait.until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='text']"))
@@ -185,7 +192,15 @@ def handle_2fa(driver, wait):
             
             # Wait for 2FA verification
             time.sleep(2)
-            
+        
+        except TimeoutException:
+            log("2FA input field not found, assuming already logged in. Skipping 2FA.")
+            return  # Gracefully exit if 2FA is not required
+        
+        except InvalidElementStateException:
+            log("2FA field exists but is not interactable. Assuming already logged in.")
+            return  # Exit gracefully
+        
         except Exception as e:
             log(f"Error during 2FA: {str(e)}", "error")
             driver.save_screenshot("2fa_error.png")
@@ -282,7 +297,7 @@ def navigate_and_export_transactions(driver, wait):
                 driver.save_screenshot("export_confirm_error.png")
                 raise
             
-            log("Export request submitted for Piano Income transactions from last 7 days.")
+            log(f"Export request submitted for Piano Income transactions from {date_range_text}.")
             time.sleep(0.1)  # Wait for export to initiate
 def verify_csv_file(file_path):
     """Verify that the CSV file exists and has content"""
