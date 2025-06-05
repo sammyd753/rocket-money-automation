@@ -35,18 +35,18 @@ def log(message, level="info"):
     elif level == "error":
         logging.error(message)
     print(message)
-def wait_and_click(driver, wait, xpath, fallback_xpath, error_msg, retries=3):
+def wait_and_click(driver, wait, text_pattern, fallback_xpath, error_msg, retries=3):
     """Helper function to wait for and click elements with retry logic and fallback xpath"""
     for attempt in range(retries):
         try:
             try:
-                # If primary xpath fails, try fallback
-                element = wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
+                # If text_pattern fails, try fallback xpath
+                element = wait.until(EC.element_to_be_clickable((By.XPATH, text_pattern)))
                 element.click()
                 return True
             except:
-                # Try primary xpath first
-                log(f"Primary xpath failed, trying fallback for: {error_msg}")
+                # Try fallback xpath first
+                log(f"Primary text_pattern failed, trying fallback for: {error_msg}")
                 element = wait.until(EC.element_to_be_clickable((By.XPATH, fallback_xpath)))
                 element.click()
                 return True
@@ -216,13 +216,21 @@ def navigate_and_export_transactions(driver, wait):
             driver.get("https://app.rocketmoney.com/transactions")
             time.sleep(2.5)  # Increased wait time for page load
             
+            # DEBUG: Print all button texts on the page
+            log('--- DEBUG: Listing all button texts on the page ---')
+            buttons = driver.find_elements(By.TAG_NAME, 'button')
+            for idx, b in enumerate(buttons):
+                log(f'Button {idx}: {repr(b.text)}')
+            log('--- END DEBUG BUTTON LIST ---')
+            
             # 1. Click All dates button
             log("Clicking All dates button...")
             wait_and_click(
                 driver, 
                 wait, 
-                "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[1]/div/button",
-                "//button[contains(text(), 'All dates')]",
+                # "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[1]/div/button",
+                "//button[contains(normalize-space(.), 'All dates')]",
+                "/html/body/div[1]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[1]/div/button",
                 "Failed to click All dates button"
             )
             
@@ -234,8 +242,9 @@ def navigate_and_export_transactions(driver, wait):
             wait_and_click(
                 driver,
                 wait,
-                f"/html/body/div[3]/main/div/div/div[3]/div/div/div/div/li[{date_range_index}]",
-                f"//li[contains(text(), '{date_range_text}')]",
+                # f"/html/body/div[3]/main/div/div/div[3]/div/div/div/div/li[{date_range_index}]",
+                f"//li[contains(normalize-space(.), '{date_range_text}')]",
+                f"/html/body/div[1]/main/div/div/div[3]/div/div/div/div/li[3]",
                 f"Failed to select {date_range_text}"
             )
             
@@ -246,8 +255,9 @@ def navigate_and_export_transactions(driver, wait):
             wait_and_click(
                 driver,
                 wait,
-                "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[2]/div/button",
-                "//button[contains(text(), 'All Categories')]",
+                # "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[2]/div/button",
+                "//button[contains(normalize-space(.), 'All categories')]",
+                "/html/body/div[1]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[2]/div/button",
                 "Failed to click All Categories button"
             )
             
@@ -258,8 +268,9 @@ def navigate_and_export_transactions(driver, wait):
             wait_and_click(
                 driver,
                 wait,
-                "/html/body/div[3]/main/div/div/div[4]/div/div/div/ul/li[3]",
-                "//li[contains(text(), 'Piano Income')]",
+                # "/html/body/div[3]/main/div/div/div[4]/div/div/div/ul/li[3]",
+                "//li[contains(normalize-space(.), 'Piano Income')]",
+                "/html/body/div[1]/main/div/div/div[4]/div/div/div/ul/li[4]",
                 "Failed to select Piano Income category"
             )
             
@@ -270,22 +281,24 @@ def navigate_and_export_transactions(driver, wait):
             wait_and_click(
                 driver,
                 wait,
-                "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[1]/div[2]/div[1]/div/button",
-                "//button[text()='Export']",
+                # "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[1]/div[2]/div[1]/div/button",
+                "//button[contains(normalize-space(.), 'Export')]",
+                "/html/body/div[1]/main/div/div/div[1]/div/div[1]/header/div/div/div[1]/div[2]/div[1]/div/button",
                 "Failed to click Export button"
             )
             
             # Wait for and click the export confirmation button
             log("Waiting for export confirmation button...")
             try:
-                # Try exact xpath first, then fallback to text pattern
+                # Try exact text pattern first, then fallback to xpath
                 try:
                     confirm_button = wait.until(
-                        EC.element_to_be_clickable((By.XPATH, "/html/body/div[7]/div/div/div/div[2]/button"))
+                        # EC.element_to_be_clickable((By.XPATH, "/html/body/div[7]/div/div/div/div[2]/button"))
+                        EC.element_to_be_clickable((By.XPATH, "//button[contains(normalize-space(.), 'Export') and contains(normalize-space(.), 'transactions')]"))
                     )
                 except:
                     confirm_button = wait.until(
-                        EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Export') and contains(text(), 'transactions')]"))
+                        EC.element_to_be_clickable((By.XPATH, "/html/body/div[5]/div/div/div/div[2]/button"))
                     )
                 
                 time.sleep(1)  # Short wait to ensure modal is fully loaded
@@ -735,6 +748,7 @@ def append_to_google_sheets(file_path, max_retries=3):
                 existing_keys = {
                     (row[date_idx], row[amount_idx], row[desc_idx])
                     for row in existing_data[1:]  # Skip header row
+                    if len(row) > max(date_idx, amount_idx, desc_idx) and row[date_idx] and row[amount_idx] and row[desc_idx]  # Only include rows with valid data
                 }
                 log(f"Found {len(existing_keys)} existing transactions")
             
@@ -752,6 +766,21 @@ def append_to_google_sheets(file_path, max_retries=3):
                 
                 # Process each row
                 for row in csv_reader:
+                    # Skip empty rows
+                    if not row or all(cell.strip() == '' for cell in row):
+                        log("Skipping empty row")
+                        continue
+                        
+                    # Ensure row has enough elements for our key fields
+                    if len(row) <= max(csv_date_idx, csv_amount_idx, csv_desc_idx):
+                        log(f"Skipping incomplete row: {row}", "error")
+                        continue
+                        
+                    # Skip rows where key fields are empty
+                    if not row[csv_date_idx] or not row[csv_amount_idx] or not row[csv_desc_idx]:
+                        log(f"Skipping row with empty key fields: {row}", "error")
+                        continue
+                    
                     # Create composite key for new row using original values
                     new_key = (row[csv_date_idx], row[csv_amount_idx], row[csv_desc_idx])
                     
@@ -769,9 +798,12 @@ def append_to_google_sheets(file_path, max_retries=3):
                             else:
                                 # Keep original string values for all other fields
                                 formatted_row.append(value)
-                        new_rows.append(formatted_row)
-                        existing_keys.add(new_key)  # Add to existing keys to prevent duplicates within new data
-                        log(f"New transaction found: Date={new_key[0]}, Amount={new_key[1]}, Description={new_key[2]}")
+                        
+                        # Make sure the formatted row isn't empty
+                        if formatted_row and any(cell for cell in formatted_row):
+                            new_rows.append(formatted_row)
+                            existing_keys.add(new_key)  # Add to existing keys to prevent duplicates within new data
+                            log(f"New transaction found: Date={new_key[0]}, Amount={new_key[1]}, Description={new_key[2]}")
                     else:
                         duplicate_count += 1
                         log(f"Skipping duplicate transaction: Date={new_key[0]}, Amount={new_key[1]}, Description={new_key[2]}")
@@ -779,6 +811,19 @@ def append_to_google_sheets(file_path, max_retries=3):
             if not new_rows:
                 log(f"No new transactions to append. Found {duplicate_count} duplicate entries.")
                 return
+            
+            # Ensure all rows in batch have the same length (match the header length)
+            expected_length = len(csv_header)
+            for i in range(len(new_rows)):
+                if len(new_rows[i]) < expected_length:
+                    # Pad shorter rows with empty strings
+                    new_rows[i].extend([''] * (expected_length - len(new_rows[i])))
+                elif len(new_rows[i]) > expected_length:
+                    # Truncate longer rows
+                    new_rows[i] = new_rows[i][:expected_length]
+            
+            # Log the rows we're about to append
+            log(f"Preparing to append {len(new_rows)} non-empty rows")
             
             # Append in batches of 100 to avoid quota limits
             batch_size = 100
