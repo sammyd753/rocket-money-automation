@@ -228,7 +228,6 @@ def navigate_and_export_transactions(driver, wait):
             wait_and_click(
                 driver, 
                 wait, 
-                # "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[1]/div/button",
                 "//button[contains(normalize-space(.), 'All dates')]",
                 "/html/body/div[1]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[1]/div/button",
                 "Failed to click All dates button"
@@ -242,7 +241,6 @@ def navigate_and_export_transactions(driver, wait):
             wait_and_click(
                 driver,
                 wait,
-                # f"/html/body/div[3]/main/div/div/div[3]/div/div/div/div/li[{date_range_index}]",
                 f"//li[contains(normalize-space(.), '{date_range_text}')]",
                 f"/html/body/div[1]/main/div/div/div[3]/div/div/div/div/li[3]",
                 f"Failed to select {date_range_text}"
@@ -255,7 +253,6 @@ def navigate_and_export_transactions(driver, wait):
             wait_and_click(
                 driver,
                 wait,
-                # "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[2]/div/button",
                 "//button[contains(normalize-space(.), 'All categories')]",
                 "/html/body/div[1]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[2]/div/button",
                 "Failed to click All Categories button"
@@ -268,7 +265,6 @@ def navigate_and_export_transactions(driver, wait):
             wait_and_click(
                 driver,
                 wait,
-                # "/html/body/div[3]/main/div/div/div[4]/div/div/div/ul/li[3]",
                 "//li[contains(normalize-space(.), 'Piano Income')]",
                 "/html/body/div[1]/main/div/div/div[4]/div/div/div/ul/li[4]",
                 "Failed to select Piano Income category"
@@ -281,7 +277,6 @@ def navigate_and_export_transactions(driver, wait):
             wait_and_click(
                 driver,
                 wait,
-                # "/html/body/div[3]/main/div/div/div[1]/div/div[1]/header/div/div/div[1]/div[2]/div[1]/div/button",
                 "//button[contains(normalize-space(.), 'Export')]",
                 "/html/body/div[1]/main/div/div/div[1]/div/div[1]/header/div/div/div[1]/div[2]/div[1]/div/button",
                 "Failed to click Export button"
@@ -293,7 +288,6 @@ def navigate_and_export_transactions(driver, wait):
                 # Try exact text pattern first, then fallback to xpath
                 try:
                     confirm_button = wait.until(
-                        # EC.element_to_be_clickable((By.XPATH, "/html/body/div[7]/div/div/div/div[2]/button"))
                         EC.element_to_be_clickable((By.XPATH, "//button[contains(normalize-space(.), 'Export') and contains(normalize-space(.), 'transactions')]"))
                     )
                 except:
@@ -444,21 +438,36 @@ def get_download_link(max_retries=1, wait_time=30):
                         f.write(body)
                     log("Saved email content to email_content.html for inspection")
                     
-                    # Look for the specific download link text
-                    download_text = "Download file ➔"
-                    pos = body.find(download_text)
-                    if pos != -1:
-                        log(f"Found '{download_text}' text in email")
-                        # Search backwards for the nearest href
-                        href_start = body.rfind('href="', 0, pos)
-                        if href_start != -1:
-                            href_end = body.find('"', href_start + 6)
-                            if href_end != -1:
-                                download_link = body[href_start + 6:href_end]
-                                log(f"Found download link: {download_link}")
-                                break
-                    else:
-                        log(f"Could not find '{download_text}' text in email")
+                    # --- NEW LOGIC: Use BeautifulSoup to find the download link ---
+                    soup = BeautifulSoup(body, "html.parser")
+                    # Find the first anchor with text 'Download file' (strip spaces)
+                    anchor = None
+                    for a in soup.find_all('a'):
+                        if a.text.strip().lower() == 'download file':
+                            anchor = a
+                            break
+                    if anchor and anchor.has_attr('href'):
+                        download_link = anchor['href']
+                        log(f"Found download link using BeautifulSoup: text='{anchor.text.strip()}', href='{download_link}'")
+                        break
+                    # --- END NEW LOGIC ---
+                    
+                    # Fallback: Old method (in case the above fails)
+                    if not download_link:
+                        download_text = "Download file ➔"
+                        pos = body.find(download_text)
+                        if pos != -1:
+                            log(f"Found '{download_text}' text in email")
+                            # Search backwards for the nearest href
+                            href_start = body.rfind('href=\"', 0, pos)
+                            if href_start != -1:
+                                href_end = body.find('"', href_start + 6)
+                                if href_end != -1:
+                                    download_link = body[href_start + 6:href_end]
+                                    log(f"Found download link (fallback): {download_link}")
+                                    break
+                        else:
+                            log(f"Could not find '{download_text}' text in email")
             
             mail.logout()
             
