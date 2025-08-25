@@ -12,7 +12,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
+from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException, InvalidElementStateException
 from oauth2client.service_account import ServiceAccountCredentials
 from google.oauth2.credentials import Credentials
 from google.oauth2 import service_account
@@ -61,7 +61,17 @@ def handle_login_form(driver, wait):
     try:
         # Try multiple selectors for the login form
         selectors = [
-            "input[name='username']"
+            # "input[name='username']",
+            # "input[name='email']",
+            "input[type='email']"
+            # "input[placeholder*='email']",
+            # "input[placeholder*='Email']",
+            # "input[placeholder*='username']",
+            # "input[placeholder*='Username']",
+            # "input[id*='username']",
+            # "input[id*='email']",
+            # "input[type='text'][placeholder*='email']",
+            # "input[type='text'][placeholder*='Email']"
         ]
         
         username_field = None
@@ -95,7 +105,11 @@ def handle_login_form(driver, wait):
         
         # Try to find password field
         password_selectors = [
-            "input[name='password']"
+            # "input[name='password']",
+            "input[type='password']",
+            # "input[placeholder*='password']",
+            # "input[placeholder*='Password']",
+            # "input[id*='password']"
         ]
         
         password_field = None
@@ -123,10 +137,17 @@ def handle_login_form(driver, wait):
         
         # Try to find login button
         button_selectors = [
-            "button[type='submit']",
-            "button:contains('Sign in')",
-            "button:contains('Log in')",
-            "input[type='submit']"
+            "button[type='submit']"
+            # "button:contains('Sign in')",
+            # "button:contains('Log in')",
+            # "button:contains('Login')",
+            # "button:contains('Sign In')",
+            # "button:contains('Log In')",
+            # "input[type='submit']",
+            # "button[class*='login']",
+            # "button[class*='signin']",
+            # "button[id*='login']",
+            # "button[id*='signin']"
         ]
         
         login_button = None
@@ -352,17 +373,110 @@ def export_rocket_money_data():
         current_url = driver.current_url
         log(f"Current URL: {current_url}")
 
+        # Check if we are already logged in by verifying if we have reached the expected logged-in URL
+        logged_in_url = "https://app.rocketmoney.com/"  # Replace with your actual logged-in page URL
+        if driver.current_url.startswith(logged_in_url):
+            log("Already logged in. Skipping 2FA.")
+            return navigate_and_export_transactions(driver, wait)
+
         # Check if we need to log in
         try:
-            # Quick check for login form
-            username_field = wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='username']"))
-            )
-            log("Login required, proceeding with authentication...")
+            # More robust login detection - try multiple selectors that indicate login is needed
+            login_indicators = [
+                "input[name='username']",
+                "input[name='email']", 
+                "input[type='email']",
+                "input[placeholder*='email']",
+                "input[placeholder*='Email']",
+                "input[placeholder*='username']",
+                "input[placeholder*='Username']",
+                "input[id*='username']",
+                "input[id*='email']",
+                "input[type='text'][placeholder*='email']",
+                "input[type='text'][placeholder*='Email']"
+            ]
+            
+            login_required = False
+            for selector in login_indicators:
+                try:
+                    log(f"Checking for login field with selector: {selector}")
+                    username_field = wait.until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                    )
+                    if username_field:
+                        log(f"Found login field with selector: {selector}")
+                        login_required = True
+                        break
+                except TimeoutException:
+                    continue
+            
+            if login_required:
+                log("Login required, proceeding with authentication...")
+                handle_login_form(driver, wait)
+                handle_2fa(driver, wait)
+            else:
+                # Additional check: look for common logged-in page indicators
+                logged_in_indicators = [
+                    "//a[contains(text(), 'Transactions')]",
+                    "//a[contains(text(), 'Dashboard')]",
+                    "//button[contains(text(), 'Export')]",
+                    "//div[contains(@class, 'dashboard')]",
+                    "//div[contains(@class, 'transactions')]"
+                ]
+                
+                logged_in = False
+                for xpath in logged_in_indicators:
+                    try:
+                        element = driver.find_element(By.XPATH, xpath)
+                        if element:
+                            log(f"Found logged-in indicator: {xpath}")
+                            logged_in = True
+                            break
+                    except:
+                        continue
+                
+                if logged_in:
+                    log("Already logged in, skipping authentication...")
+                else:
+                    log("Could not determine login status, taking debug screenshot...")
+                    driver.save_screenshot("login_status_unknown.png")
+                    log("Debug screenshot saved as login_status_unknown.png")
+                    
+                    # Log some page information for debugging
+                    try:
+                        page_title = driver.title
+                        current_url = driver.current_url
+                        log(f"Page title: {page_title}")
+                        log(f"Current URL: {current_url}")
+                        
+                        # Look for any input fields on the page
+                        input_fields = driver.find_elements(By.TAG_NAME, "input")
+                        log(f"Found {len(input_fields)} input fields on the page")
+                        for i, field in enumerate(input_fields[:5]):  # Log first 5 fields
+                            try:
+                                field_type = field.get_attribute("type")
+                                field_name = field.get_attribute("name")
+                                field_id = field.get_attribute("id")
+                                field_placeholder = field.get_attribute("placeholder")
+                                log(f"Input field {i}: type={field_type}, name={field_name}, id={field_id}, placeholder={field_placeholder}")
+                            except:
+                                log(f"Input field {i}: could not get attributes")
+                    except Exception as e:
+                        log(f"Error getting page debug info: {str(e)}")
+                    
+                    log("Attempting login anyway...")
+                    handle_login_form(driver, wait)
+                    handle_2fa(driver, wait)
+                    
+        except Exception as e:
+            log(f"Error during login detection: {str(e)}", "error")
+            # Take screenshot for debugging
+            driver.save_screenshot("login_detection_error.png")
+            log("Login detection error screenshot saved as login_detection_error.png")
+            # Attempt login anyway as fallback
+            log("Attempting login as fallback...")
             handle_login_form(driver, wait)
             handle_2fa(driver, wait)
-        except TimeoutException:
-            log("Already logged in, skipping authentication...")
 
         # Navigate to transactions page and export data
         navigate_and_export_transactions(driver, wait)
