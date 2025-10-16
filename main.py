@@ -383,17 +383,17 @@ def export_rocket_money_data():
         try:
             # More robust login detection - try multiple selectors that indicate login is needed
             login_indicators = [
-                "input[name='username']",
-                "input[name='email']", 
-                "input[type='email']",
-                "input[placeholder*='email']",
-                "input[placeholder*='Email']",
-                "input[placeholder*='username']",
-                "input[placeholder*='Username']",
-                "input[id*='username']",
-                "input[id*='email']",
-                "input[type='text'][placeholder*='email']",
-                "input[type='text'][placeholder*='Email']"
+                # "input[name='username']",
+                # "input[name='email']", 
+                "input[type='email']"
+                # "input[placeholder*='email']",
+                # "input[placeholder*='Email']",
+                # "input[placeholder*='username']",
+                # "input[placeholder*='Username']",
+                # "input[id*='username']",
+                # "input[id*='email']",
+                # "input[type='text'][placeholder*='email']",
+                # "input[type='text'][placeholder*='Email']"
             ]
             
             login_required = False
