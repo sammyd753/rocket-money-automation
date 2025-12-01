@@ -137,17 +137,17 @@ def handle_login_form(driver, wait):
         
         # Try to find login button
         button_selectors = [
-            "button[type='submit']"
-            # "button:contains('Sign in')",
-            # "button:contains('Log in')",
-            # "button:contains('Login')",
-            # "button:contains('Sign In')",
-            # "button:contains('Log In')",
-            # "input[type='submit']",
-            # "button[class*='login']",
-            # "button[class*='signin']",
-            # "button[id*='login']",
-            # "button[id*='signin']"
+            "button[type='submit']",
+            "button:contains('Sign in')",
+            "button:contains('Log in')",
+            "button:contains('Login')",
+            "button:contains('Sign In')",
+            "button:contains('Log In')",
+            "input[type='submit']",
+            "button[class*='login']",
+            "button[class*='signin']",
+            "button[id*='login']",
+            "button[id*='signin']"
         ]
         
         login_button = None
@@ -385,7 +385,7 @@ def export_rocket_money_data():
             login_indicators = [
                 # "input[name='username']",
                 # "input[name='email']", 
-                "input[type='email']"
+                "input[type='email']",
                 # "input[placeholder*='email']",
                 # "input[placeholder*='Email']",
                 # "input[placeholder*='username']",
