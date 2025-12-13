@@ -293,37 +293,46 @@ def navigate_and_export_transactions(driver, wait):
             
             time.sleep(0.5)  # Wait for filter to apply
             
-            # 5. Click Export button
-            log("Clicking Export button...")
-            wait_and_click(
-                driver,
-                wait,
-                "//button[contains(normalize-space(.), 'Export')]",
-                "/html/body/div[1]/main/div/div/div[1]/div/div[1]/header/div/div/div[1]/div[2]/div[1]/div/button",
-                "Failed to click Export button"
-            )
+            # 5. Click "Export selected transactions" button (first button with icon)
+            log("Clicking 'Export selected transactions' button...")
+            try:
+                # Try to find button by aria-label first
+                export_selected_button = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Export selected transactions']"))
+                )
+                export_selected_button.click()
+                log("Clicked 'Export selected transactions' button")
+                time.sleep(1)  # Wait for the export modal/button to appear
+            except Exception as e:
+                log(f"Error clicking 'Export selected transactions' button: {str(e)}", "error")
+                driver.save_screenshot("export_selected_error.png")
+                raise
             
-            # Wait for and click the export confirmation button
+            # 6. Wait for and click the actual export confirmation button
             log("Waiting for export confirmation button...")
             try:
-                # Try exact text pattern first, then fallback to xpath
-                try:
-                    confirm_button = wait.until(
-                        EC.element_to_be_clickable((By.XPATH, "//button[contains(normalize-space(.), 'Export') and contains(normalize-space(.), 'transactions')]"))
-                    )
-                except:
-                    confirm_button = wait.until(
-                        EC.element_to_be_clickable((By.XPATH, "/html/body/div[5]/div/div/div/div[2]/button"))
-                    )
-                
-                time.sleep(1)  # Short wait to ensure modal is fully loaded
+                # Try to find button by aria-label containing "Export" and "transactions"
+                confirm_button = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(@aria-label, 'Export') and contains(@aria-label, 'transactions')]"))
+                )
+                time.sleep(0.5)  # Short wait to ensure modal is fully loaded
                 log("Clicking export confirmation button...")
                 confirm_button.click()
                 log("Export confirmation clicked")
             except Exception as e:
                 log(f"Error clicking export confirmation: {str(e)}", "error")
-                driver.save_screenshot("export_confirm_error.png")
-                raise
+                # Try fallback xpath
+                try:
+                    log("Trying fallback xpath for export confirmation button...")
+                    confirm_button = wait.until(
+                        EC.element_to_be_clickable((By.XPATH, "/html/body/div[5]/div/div/div/div[2]/button"))
+                    )
+                    confirm_button.click()
+                    log("Export confirmation clicked (fallback)")
+                except Exception as e2:
+                    log(f"Fallback also failed: {str(e2)}", "error")
+                    driver.save_screenshot("export_confirm_error.png")
+                    raise
             
             log(f"Export request submitted for Piano Income transactions from {date_range_text}.")
             time.sleep(0.1)  # Wait for export to initiate
