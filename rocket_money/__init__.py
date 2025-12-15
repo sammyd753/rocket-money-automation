@@ -1,0 +1,2 @@
+"""Rocket Money automation modules."""
+
