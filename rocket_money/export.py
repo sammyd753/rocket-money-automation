@@ -14,183 +14,105 @@ from utils.selenium_helpers import wait_and_click
 
 
 def navigate_and_export_transactions(driver, wait):
-    """Navigate to transactions page and export filtered data.
-    
-    Args:
-        driver: Selenium WebDriver instance
-        wait: WebDriverWait instance
-    """
-    # Wait for login and navigate to transactions
-    log("Waiting for login to complete...")
-    time.sleep(2.5)  # Increased wait time for login
-    
-    log("Navigating to transactions page...")
-    driver.get("https://app.rocketmoney.com/transactions")
-    time.sleep(2.5)  # Increased wait time for page load
-    
-    # DEBUG: Print all button texts on the page
-    log('--- DEBUG: Listing all button texts on the page ---')
-    buttons = driver.find_elements(By.TAG_NAME, 'button')
-    for idx, b in enumerate(buttons):
-        log(f'Button {idx}: {repr(b.text)}')
-    log('--- END DEBUG BUTTON LIST ---')
-    
-    # 1. Click All dates button
-    log("Clicking All dates button...")
-    wait_and_click(
-        driver, 
-        wait, 
-        "//button[contains(normalize-space(.), 'All dates')]",
-        "/html/body/div[1]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[1]/div/button",
-        "Failed to click All dates button"
-    )
-    
-    time.sleep(0.5)  # Wait for dropdown
-    
-    # 2. Select date range based on config
-    date_range_index, date_range_text = ROCKET_DATE_RANGE_MAP[ROCKET_DATE_SELECT]
-    log(f"Selecting {date_range_text}...")
-    wait_and_click(
-        driver,
-        wait,
-        f"//li[contains(normalize-space(.), '{date_range_text}')]",
-        f"/html/body/div[1]/main/div/div/div[3]/div/div/div/div/li[3]",
-        f"Failed to select {date_range_text}"
-    )
-    
-    time.sleep(0.5)  # Wait for filter to apply
-    
-    # 3. Click All Categories button
-    log("Clicking All Categories button...")
-    wait_and_click(
-        driver,
-        wait,
-        "//button[contains(normalize-space(.), 'All categories')]",
-        "/html/body/div[1]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[2]/div/button",
-        "Failed to click All Categories button"
-    )
-    
-    time.sleep(0.5)  # Wait for dropdown
-    
-    # 4. Select Piano Income category
-    log("Selecting Piano Income category...")
-    wait_and_click(
-        driver,
-        wait,
-        "//li[contains(normalize-space(.), 'Piano Income')]",
-        "/html/body/div[1]/main/div/div/div[4]/div/div/div/ul/li[4]",
-        "Failed to select Piano Income category"
-    )
-    
-    time.sleep(0.5)  # Wait for filter to apply
-    
-    # 5. Click "Export selected transactions" button (first button with icon)
-    log("Clicking 'Export selected transactions' button...")
-    try:
-        # Try to find button by aria-label first
-        export_selected_button = wait.until(
-            EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Export selected transactions']"))
-        )
-        export_selected_button.click()
-        log("Clicked 'Export selected transactions' button")
-        time.sleep(1.5)  # Wait for the export modal to appear
-    except Exception as e:
-        log(f"Error clicking 'Export selected transactions' button: {str(e)}", "error")
-        driver.save_screenshot("export_selected_error.png")
-        raise
-    
-    # 6. Click CSV format option in the modal
-    log("Looking for CSV format option...")
-    try:
-        # The CSV button has aria-label="Export selected transactions" and contains an SVG with CSV icon
-        # We need to find it in the modal (not the original button we just clicked)
-        # Look for button with CSV icon SVG (the path contains "M20 13V8.41421" which is unique to CSV icon)
-        csv_selectors = [
-            # Look for button with CSV icon SVG path in modal/dialog context
-            "//div[contains(@role, 'dialog')]//button[@aria-label='Export selected transactions' and .//svg//path[contains(@d, 'M20 13V8.41421')]]",
-            # Alternative: look for button with the CSV icon in modal context (any modal structure)
-            "//div[contains(@role, 'dialog')]//button[@aria-label='Export selected transactions']",
-            # Fallback: look for any button with CSV icon SVG (should be in modal after we clicked export)
-            "//button[.//svg//path[contains(@d, 'M20 13V8.41421')]]",
-            # Last resort: any button with aria-label in a dialog/modal
-            "(//div[contains(@role, 'dialog')] | //div[contains(@class, 'modal')] | //div[contains(@class, 'dialog')])//button[@aria-label='Export selected transactions']",
-        ]
-        
-        csv_clicked = False
-        for selector in csv_selectors:
+            """Navigate to transactions page and export filtered data"""
+            # Wait for login and navigate to transactions
+            log("Waiting for login to complete...")
+            time.sleep(2.5)  # Increased wait time for login
+            
+            log("Navigating to transactions page...")
+            driver.get("https://app.rocketmoney.com/transactions")
+            time.sleep(2.5)  # Increased wait time for page load
+            
+            # DEBUG: Print all button texts on the page
+            log('--- DEBUG: Listing all button texts on the page ---')
+            buttons = driver.find_elements(By.TAG_NAME, 'button')
+            for idx, b in enumerate(buttons):
+                log(f'Button {idx}: {repr(b.text)}')
+            log('--- END DEBUG BUTTON LIST ---')
+            
+            # 1. Click All dates button
+            log("Clicking All dates button...")
+            wait_and_click(
+                driver, 
+                wait, 
+                "//button[contains(normalize-space(.), 'All dates')]",
+                "/html/body/div[1]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[1]/div/button",
+                "Failed to click All dates button"
+            )
+            
+            time.sleep(0.5)  # Wait for dropdown
+            
+            # 2. Select date range based on config
+            date_range_index, date_range_text = ROCKET_DATE_RANGE_MAP[ROCKET_DATE_SELECT]
+            log(f"Selecting {date_range_text}...")
+            wait_and_click(
+                driver,
+                wait,
+                f"//li[contains(normalize-space(.), '{date_range_text}')]",
+                f"/html/body/div[1]/main/div/div/div[3]/div/div/div/div/li[3]",
+                f"Failed to select {date_range_text}"
+            )
+            
+            time.sleep(0.5)  # Wait for filter to apply
+            
+            # 3. Click All Categories button
+            log("Clicking All Categories button...")
+            wait_and_click(
+                driver,
+                wait,
+                "//button[contains(normalize-space(.), 'All categories')]",
+                "/html/body/div[1]/main/div/div/div[1]/div/div[1]/header/div/div/div[2]/div/div[2]/div/button",
+                "Failed to click All Categories button"
+            )
+            
+            time.sleep(0.5)  # Wait for dropdown
+            
+            # 4. Select Piano Income category
+            log("Selecting Piano Income category...")
+            wait_and_click(
+                driver,
+                wait,
+                "//li[contains(normalize-space(.), 'Piano Income')]",
+                "/html/body/div[1]/main/div/div/div[4]/div/div/div/ul/li[4]",
+                "Failed to select Piano Income category"
+            )
+            
+            time.sleep(0.5)  # Wait for filter to apply
+            
+            # 5. Click CSV button
+            log("Clicking CSV button...")
+            wait_and_click(
+                driver,
+                wait,
+                "//button[contains(normalize-space(.), 'Export selected transactions')]",
+                "/html/body/div[3]/main/div/div/div[1]/main/div[1]/div/div[1]/div[2]/div[3]/div/div/button",
+                "Failed to click CSV button"
+            )
+            
+            # Wait for and click the export confirmation button
+            log("Waiting for export confirmation button...")
             try:
-                log(f"Trying CSV selector: {selector}")
-                csv_button = wait.until(
-                    EC.element_to_be_clickable((By.XPATH, selector))
-                )
-                csv_button.click()
-                log("Clicked CSV format option")
-                csv_clicked = True
-                time.sleep(0.5)  # Wait for CSV selection to register
-                break
-            except Exception as e:
-                log(f"CSV selector failed: {selector} - {str(e)}")
-                continue
-        
-        if not csv_clicked:
-            log("WARNING: Could not find CSV button. Taking screenshot for debugging...", "error")
-            driver.save_screenshot("csv_button_not_found.png")
-            # Continue anyway - maybe CSV is default or the modal structure changed
-    except Exception as e:
-        log(f"Error clicking CSV format option: {str(e)}", "error")
-        driver.save_screenshot("csv_selection_error.png")
-        # Don't raise - continue to try export button anyway
-    
-    # 7. Wait for and click the actual export confirmation button
-    log("Waiting for export confirmation button...")
-    try:
-        # The export button has aria-label like "Export 12 transactions" (number varies)
-        # It contains "Export" and "transactions" but NOT "selected"
-        export_selectors = [
-            # Button with aria-label starting with "Export" and containing "transactions" but not "selected"
-            "//button[starts-with(@aria-label, 'Export') and contains(@aria-label, 'transactions') and not(contains(@aria-label, 'selected'))]",
-            # Alternative: button with text starting with "Export" and containing "transactions"
-            "//button[starts-with(text(), 'Export') and contains(text(), 'transactions')]",
-        ]
-        
-        export_clicked = False
-        for selector in export_selectors:
-            try:
-                log(f"Trying export button selector: {selector}")
-                # Use shorter timeout for each attempt since we're trying multiple
-                confirm_button = WebDriverWait(driver, 5).until(
-                    EC.element_to_be_clickable((By.XPATH, selector))
-                )
-                time.sleep(0.5)  # Short wait to ensure button is ready
+                # Try exact text pattern first, then fallback to xpath
+                try:
+                    confirm_button = wait.until(
+                        EC.element_to_be_clickable((By.XPATH, "//button[contains(normalize-space(.), 'Export') and contains(normalize-space(.), 'transactions') and contains(@class, 'boJQWu')]"))
+                    )
+                except:
+                    confirm_button = wait.until(
+                        EC.element_to_be_clickable((By.XPATH, "/html/body/div[6]/div/div/div/div[2]/button"))
+                    )
+                
+                time.sleep(1)  # Short wait to ensure modal is fully loaded
                 log("Clicking export confirmation button...")
                 confirm_button.click()
                 log("Export confirmation clicked")
-                export_clicked = True
-                break
             except Exception as e:
-                log(f"Export selector failed: {selector} - {str(e)}")
-                continue
-        
-        if not export_clicked:
-            # Try fallback xpath
-            try:
-                log("Trying fallback xpath for export confirmation button...")
-                confirm_button = wait.until(
-                    EC.element_to_be_clickable((By.XPATH, "/html/body/div[5]/div/div/div/div[2]/button"))
-                )
-                confirm_button.click()
-                log("Export confirmation clicked (fallback)")
-            except Exception as e2:
-                log(f"Fallback also failed: {str(e2)}", "error")
+                log(f"Error clicking export confirmation: {str(e)}", "error")
                 driver.save_screenshot("export_confirm_error.png")
                 raise
-    except Exception as e:
-        log(f"Error clicking export confirmation: {str(e)}", "error")
-        driver.save_screenshot("export_confirm_error.png")
-        raise
-    
-    log(f"Export request submitted for Piano Income transactions from {date_range_text}.")
-    time.sleep(0.1)  # Wait for export to initiate
+            
+            log(f"Export request submitted for Piano Income transactions from {date_range_text}.")
+            time.sleep(0.1)  # Wait for export to initiate
 
 
 def export_rocket_money_data():
