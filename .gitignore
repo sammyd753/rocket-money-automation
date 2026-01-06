@@ -53,6 +53,9 @@ config.py
 cookies/
 cleanup.py
 chrome_user_data/
+.mm/
+.cursor/
+*.csv
 
 # Additional directories
 chatgptway/ 

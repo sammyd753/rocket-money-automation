@@ -54,6 +54,35 @@ The script will:
 - Automatic email monitoring for download links
 - Smart file handling with timestamp-based naming
 
+## Monarch Piano Income Export (API-based)
+
+Use `monarch.py` to pull Piano Income transactions directly from the Monarch Money API and write them to `monarch_piano_income.csv` with the raw fields returned by Monarch.
+
+### Setup
+
+1. Install dependencies (includes `monarchmoney`):
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Set credentials in `config.py`:
+   ```python
+   MONARCH_EMAIL = "your_monarch_email"
+   MONARCH_PASSWORD = "your_monarch_password"
+   ```
+   (No MFA secret is required if you don't use two-factor codes.)
+
+### Run
+
+```bash
+python monarch.py
+```
+
+The script:
+- Logs into Monarch using the provided credentials
+- Finds the `Piano Income` category
+- Retrieves all available transactions for that category
+- Writes them to `monarch_piano_income.csv`
+
 ## Requirements
 
 - Python 3.x
