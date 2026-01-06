@@ -84,7 +84,7 @@ def navigate_and_export_transactions(driver, wait):
             wait_and_click(
                 driver,
                 wait,
-                "//button[contains(normalize-space(.), 'Export selected transactions')]",
+                "//button[@aria-label='Export selected transactions']",
                 "/html/body/div[3]/main/div/div/div[1]/main/div[1]/div/div[1]/div[2]/div[3]/div/div/button",
                 "Failed to click CSV button"
             )
