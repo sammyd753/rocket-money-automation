@@ -104,14 +104,36 @@ async def fetch_all_transactions(mm: MonarchMoney, category_id: str) -> List[Dic
     return all_results
 
 
-def normalize_row(tx: Dict[str, Any]) -> Dict[str, Any]:
-    normalized: Dict[str, Any] = {}
-    for key, value in tx.items():
-        if isinstance(value, (dict, list)):
-            normalized[key] = json.dumps(value, ensure_ascii=True)
-        else:
-            normalized[key] = value
-    return normalized
+def extract_cleaned_row(tx: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract and clean the specific fields we want from a transaction."""
+    cleaned: Dict[str, Any] = {}
+    
+    # Date - direct from date column
+    cleaned["Date"] = tx.get("date", "")
+    
+    # Account - get displayName from account dict
+    account = tx.get("account", {})
+    if isinstance(account, dict):
+        cleaned["Account"] = account.get("displayName", "")
+    else:
+        cleaned["Account"] = ""
+    
+    # Name and TransactionsCount - get from merchant dict
+    merchant = tx.get("merchant", {})
+    if isinstance(merchant, dict):
+        cleaned["Name"] = merchant.get("name", "")
+        cleaned["TransactionsCount"] = merchant.get("transactionsCount", "")
+    else:
+        cleaned["Name"] = ""
+        cleaned["TransactionsCount"] = ""
+    
+    # Amount - direct from amount column
+    cleaned["Amount"] = tx.get("amount", "")
+    
+    # PlaidName - direct from plaidName column
+    cleaned["PlaidName"] = tx.get("plaidName", "")
+    
+    return cleaned
 
 
 def write_csv(transactions: List[Dict[str, Any]]) -> None:
@@ -119,14 +141,19 @@ def write_csv(transactions: List[Dict[str, Any]]) -> None:
         log("No transactions to write.")
         return
 
-    fieldnames = sorted({k for tx in transactions for k in tx.keys()})
+    # Clean all transactions
+    cleaned_transactions = [extract_cleaned_row(tx) for tx in transactions]
+    
+    # Define the column order
+    fieldnames = ["Date", "Account", "Name", "TransactionsCount", "Amount", "PlaidName"]
+    
     with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        for tx in transactions:
-            writer.writerow(normalize_row(tx))
+        for tx in cleaned_transactions:
+            writer.writerow(tx)
 
-    log(f"Wrote {len(transactions)} rows to {OUTPUT_CSV}.")
+    log(f"Wrote {len(cleaned_transactions)} rows to {OUTPUT_CSV}.")
 
 
 async def main() -> None:
@@ -138,4 +165,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-
