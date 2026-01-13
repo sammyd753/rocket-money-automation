@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import json
+from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 
 import config
@@ -16,7 +17,7 @@ from googleapiclient.errors import HttpError
 
 OUTPUT_CSV = "monarch_piano_income.csv"
 CATEGORY_NAME = "Piano Income"
-FIELDNAMES = ["Date", "Account", "Name", "TransactionsCount", "Amount", "PlaidName"]
+FIELDNAMES = ["Date", "Account", "Name", "TransactionsCount", "Amount", "PlaidName", "Id"]
 
 
 async def login_client() -> MonarchMoney:
@@ -84,7 +85,7 @@ async def get_piano_category_id(mm: MonarchMoney) -> str:
     return category_id
 
 
-async def fetch_all_transactions(mm: MonarchMoney, category_id: str) -> List[Dict[str, Any]]:
+async def fetch_all_transactions(mm: MonarchMoney, category_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
     limit = 500
     offset = 0
     all_results: List[Dict[str, Any]] = []
@@ -95,6 +96,8 @@ async def fetch_all_transactions(mm: MonarchMoney, category_id: str) -> List[Dic
             limit=limit,
             offset=offset,
             category_ids=[category_id],
+            start_date=start_date,
+            end_date=end_date,
         )
 
         container = resp.get("allTransactions", {})
@@ -139,7 +142,10 @@ def extract_cleaned_row(tx: Dict[str, Any]) -> Dict[str, Any]:
     
     # PlaidName - direct from plaidName column
     cleaned["PlaidName"] = tx.get("plaidName", "")
-    
+
+    # Id - unique transaction id
+    cleaned["Id"] = tx.get("id", "")
+
     return cleaned
 
 
@@ -184,7 +190,7 @@ def get_existing_rows(service) -> List[List[str]]:
         sheet = service.spreadsheets()
         result = sheet.values().get(
             spreadsheetId=SHEET_ID,
-            range=f"{SHEET_NAME_MONARCH}!A:F"
+            range=f"{SHEET_NAME_MONARCH}!A:G"
         ).execute()
         
         values = result.get('values', [])
@@ -210,11 +216,11 @@ def read_csv_rows() -> List[List[str]]:
 
 def create_row_key(row: List[str]) -> str:
     """Create a unique key for a row to identify duplicates.
-    Uses Date, Account, Name, and Amount as the composite key."""
-    if len(row) < 5:
+    Uses Id for all rows."""
+    if len(row) >= 7:
+        return row[6]
+    else:
         return ""
-    # Use Date, Account, Name, Amount as key
-    return f"{row[0]}|{row[1]}|{row[2]}|{row[4]}"
 
 
 def append_to_sheet(service, new_rows: List[List[str]]) -> None:
@@ -229,7 +235,7 @@ def append_to_sheet(service, new_rows: List[List[str]]) -> None:
         
         result = sheet.values().append(
             spreadsheetId=SHEET_ID,
-            range=f"{SHEET_NAME_MONARCH}!A:F",
+            range=f"{SHEET_NAME_MONARCH}!A:G",
             valueInputOption='RAW',
             insertDataOption='INSERT_ROWS',
             body=body
@@ -270,7 +276,7 @@ def sync_to_google_sheets() -> None:
         key = create_row_key(row)
         if key:
             existing_keys.add(key)
-    
+
     log(f"Found {len(existing_keys)} unique existing transactions.")
     
     # Find new rows (skip header from CSV)
@@ -279,9 +285,14 @@ def sync_to_google_sheets() -> None:
         key = create_row_key(row)
         if key and key not in existing_keys:
             new_rows.append(row)
-    
+
     log(f"Identified {len(new_rows)} new transactions to append.")
-    
+    if new_rows: ##
+        log("New transaction keys:")
+        for row in new_rows:
+            key = create_row_key(row)
+            log(f"New key: {key} -> {row}") ##
+
     # Append new rows
     append_to_sheet(service, new_rows)
 
@@ -289,9 +300,20 @@ def sync_to_google_sheets() -> None:
 async def main() -> None:
     mm = await login_client()
     category_id = await get_piano_category_id(mm)
-    transactions = await fetch_all_transactions(mm, category_id)
+
+    # Check if sheet has existing data
+    service = get_sheets_service()
+    existing_rows = get_existing_rows(service)
+
+    if existing_rows:
+        start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        transactions = await fetch_all_transactions(mm, category_id, start_date=start_date, end_date=end_date)
+    else:
+        transactions = await fetch_all_transactions(mm, category_id)
+
     write_csv(transactions)
-    
+
     # Sync to Google Sheets
     sync_to_google_sheets()
 
