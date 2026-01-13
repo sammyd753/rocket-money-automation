@@ -1,15 +1,22 @@
 import asyncio
 import csv
 import json
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 import config
+from config import SHEET_ID, SHEET_NAME_MONARCH
 from monarchmoney import MonarchMoney, RequireMFAException
 from utils.logger import log
+
+from google.oauth2.credentials import Credentials
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 
 OUTPUT_CSV = "monarch_piano_income.csv"
 CATEGORY_NAME = "Piano Income"
+FIELDNAMES = ["Date", "Account", "Name", "TransactionsCount", "Amount", "PlaidName"]
 
 
 async def login_client() -> MonarchMoney:
@@ -144,11 +151,8 @@ def write_csv(transactions: List[Dict[str, Any]]) -> None:
     # Clean all transactions
     cleaned_transactions = [extract_cleaned_row(tx) for tx in transactions]
     
-    # Define the column order
-    fieldnames = ["Date", "Account", "Name", "TransactionsCount", "Amount", "PlaidName"]
-    
     with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
         writer.writeheader()
         for tx in cleaned_transactions:
             writer.writerow(tx)
@@ -156,11 +160,140 @@ def write_csv(transactions: List[Dict[str, Any]]) -> None:
     log(f"Wrote {len(cleaned_transactions)} rows to {OUTPUT_CSV}.")
 
 
+def get_sheets_service():
+    """Create and return Google Sheets API service."""
+    try:
+        creds = service_account.Credentials.from_service_account_file(
+            'credentials.json',
+            scopes=['https://www.googleapis.com/auth/spreadsheets']
+        )
+        log("Using service account credentials from credentials.json.")
+    except Exception as e:
+        raise SystemExit(
+            f"Could not load Google credentials from 'credentials.json'. "
+            f"Please ensure the file exists and is valid. Error: {e}"
+        )
+    
+    service = build('sheets', 'v4', credentials=creds)
+    return service
+
+
+def get_existing_rows(service) -> List[List[str]]:
+    """Fetch all existing rows from the Google Sheet."""
+    try:
+        sheet = service.spreadsheets()
+        result = sheet.values().get(
+            spreadsheetId=SHEET_ID,
+            range=f"{SHEET_NAME_MONARCH}!A:F"
+        ).execute()
+        
+        values = result.get('values', [])
+        log(f"Found {len(values)} existing rows in sheet (including header).")
+        return values
+    except HttpError as e:
+        log(f"Error reading from sheet: {e}")
+        return []
+
+
+def read_csv_rows() -> List[List[str]]:
+    """Read rows from the CSV file."""
+    rows = []
+    try:
+        with open(OUTPUT_CSV, 'r', newline='', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            rows = list(reader)
+        log(f"Read {len(rows)} rows from {OUTPUT_CSV} (including header).")
+    except FileNotFoundError:
+        log(f"CSV file {OUTPUT_CSV} not found.")
+    return rows
+
+
+def create_row_key(row: List[str]) -> str:
+    """Create a unique key for a row to identify duplicates.
+    Uses Date, Account, Name, and Amount as the composite key."""
+    if len(row) < 5:
+        return ""
+    # Use Date, Account, Name, Amount as key
+    return f"{row[0]}|{row[1]}|{row[2]}|{row[4]}"
+
+
+def append_to_sheet(service, new_rows: List[List[str]]) -> None:
+    """Append new rows to the Google Sheet."""
+    if not new_rows:
+        log("No new rows to append.")
+        return
+    
+    try:
+        sheet = service.spreadsheets()
+        body = {'values': new_rows}
+        
+        result = sheet.values().append(
+            spreadsheetId=SHEET_ID,
+            range=f"{SHEET_NAME_MONARCH}!A:F",
+            valueInputOption='RAW',
+            insertDataOption='INSERT_ROWS',
+            body=body
+        ).execute()
+        
+        log(f"Appended {len(new_rows)} new rows to Google Sheet.")
+        log(f"Updated range: {result.get('updates', {}).get('updatedRange', 'N/A')}")
+    except HttpError as e:
+        log(f"Error appending to sheet: {e}")
+        raise
+
+
+def sync_to_google_sheets() -> None:
+    """Read CSV, compare with existing sheet data, and append non-duplicates."""
+    log("Starting Google Sheets sync...")
+    
+    service = get_sheets_service()
+    
+    # Get existing data from sheet
+    existing_rows = get_existing_rows(service)
+    
+    # Read CSV data
+    csv_rows = read_csv_rows()
+    
+    if not csv_rows:
+        log("No CSV data to process.")
+        return
+    
+    # If sheet is empty, write header + all data
+    if not existing_rows:
+        log("Sheet is empty. Writing header and all rows.")
+        append_to_sheet(service, csv_rows)
+        return
+    
+    # Build set of existing row keys (skip header)
+    existing_keys = set()
+    for row in existing_rows[1:]:  # Skip header
+        key = create_row_key(row)
+        if key:
+            existing_keys.add(key)
+    
+    log(f"Found {len(existing_keys)} unique existing transactions.")
+    
+    # Find new rows (skip header from CSV)
+    new_rows = []
+    for row in csv_rows[1:]:  # Skip header
+        key = create_row_key(row)
+        if key and key not in existing_keys:
+            new_rows.append(row)
+    
+    log(f"Identified {len(new_rows)} new transactions to append.")
+    
+    # Append new rows
+    append_to_sheet(service, new_rows)
+
+
 async def main() -> None:
     mm = await login_client()
     category_id = await get_piano_category_id(mm)
     transactions = await fetch_all_transactions(mm, category_id)
     write_csv(transactions)
+    
+    # Sync to Google Sheets
+    sync_to_google_sheets()
 
 
 if __name__ == "__main__":
